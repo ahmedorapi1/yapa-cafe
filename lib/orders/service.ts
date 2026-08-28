@@ -1,6 +1,7 @@
 "use client";
 
 import { getSupabase, isSupabaseConfigured } from "@/lib/supabase/client";
+import { createId } from "@/lib/utils/createId";
 import type {
   CafeOrder,
   OrderingSession,
@@ -70,7 +71,7 @@ export async function createOrder(input: {
   items: OrderItemRecord[];
 }): Promise<CafeOrder> {
   const order: CafeOrder = {
-    id: crypto.randomUUID(),
+    id: createId(),
     displayId: 1000 + (Date.now() % 9000),
     tableNumber: input.tableNumber,
     status: "NEW",

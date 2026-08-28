@@ -26,6 +26,7 @@ import {
   subscribeToOrders,
   syncSession,
 } from "@/lib/orders/service";
+import { createId } from "@/lib/utils/createId";
 import type {
   CafeOrder,
   CartItem,
@@ -158,7 +159,7 @@ export function MenuExperience({ tableNumber }: { tableNumber: string }) {
       if (!activeSession) {
         const createdAt = new Date();
         activeSession = {
-          id: crypto.randomUUID(),
+          id: createId(),
           tableNumber,
           createdAt: createdAt.toISOString(),
           expiresAt: new Date(createdAt.getTime() + 60 * 60 * 1000).toISOString(),
