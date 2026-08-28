@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+:root {
+  --background: #100d0b;
+  --foreground: #f4efe8;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: "Segoe UI", Tahoma, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+::selection {
+  background: rgba(245, 198, 111, 0.9);
+  color: #1d130b;
+}
+
+.menu-shell {
+  background:
+    radial-gradient(circle at 12% 30%, rgba(126, 76, 35, 0.08), transparent 30rem),
+    #100d0b;
+}
+
+.staff-shell {
+  background:
+    radial-gradient(circle at 95% 8%, rgba(164, 107, 48, 0.075), transparent 28rem),
+    #100d0b;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #100d0b;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid #100d0b;
+  border-radius: 999px;
+  background: #463a31;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
