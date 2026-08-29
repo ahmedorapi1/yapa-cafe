@@ -9,15 +9,10 @@ try {
   if (error?.code !== "ENOENT") throw error;
 }
 
-const baseUrlArgumentIndex = process.argv.indexOf("--base-url");
-const requestedBaseUrl =
-  baseUrlArgumentIndex >= 0 ? process.argv[baseUrlArgumentIndex + 1] : undefined;
-const rawBaseUrl = requestedBaseUrl || process.env.NEXT_PUBLIC_APP_URL;
+const rawBaseUrl = process.env.NEXT_PUBLIC_APP_URL;
 
 if (!rawBaseUrl) {
-  throw new Error(
-    "Set NEXT_PUBLIC_APP_URL in .env.local or pass --base-url https://your-domain.com",
-  );
+  throw new Error("Set NEXT_PUBLIC_APP_URL in .env.local before generating QR codes.");
 }
 
 const parsedBaseUrl = new URL(rawBaseUrl);

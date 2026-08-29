@@ -51,7 +51,7 @@ Local demo data is browser-specific. Use Supabase for shared, persistent orders 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-NEXT_PUBLIC_APP_URL=https://your-deployed-domain.example
+NEXT_PUBLIC_APP_URL=https://yapa-cafe-f3fb.vercel.app
 ```
 
 6. Restart the development server.
@@ -60,7 +60,7 @@ Do not commit `.env.local`, and do not put a Supabase service-role key in any `N
 
 ## QR codes
 
-Set `NEXT_PUBLIC_APP_URL` to a deployed domain or a LAN address reachable by phones, then run:
+Set `NEXT_PUBLIC_APP_URL` to the production domain, then run:
 
 ```bash
 npm run qr:generate
