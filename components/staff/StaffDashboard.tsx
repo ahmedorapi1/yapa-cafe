@@ -28,12 +28,16 @@ import { BrandMark } from "@/components/shared/BrandMark";
 
 const REALTIME_ERROR = "انقطع التحديث المباشر مؤقتًا. بنحاول نتصل تاني.";
 
-const filters: Array<{ id: "ALL" | OrderStatus; label: string }> = [
+type StaffFilter = "ALL" | "UNPAID" | OrderStatus;
+
+const filters: Array<{ id: StaffFilter; label: string }> = [
   { id: "ALL", label: "الكل" },
   { id: "NEW", label: "جديد" },
   { id: "PREPARING", label: "قيد التحضير" },
   { id: "READY", label: "جاهز" },
-  { id: "COMPLETED", label: "مكتمل" },
+  { id: "SERVED", label: "تم التقديم" },
+  { id: "UNPAID", label: "غير مدفوع" },
+  { id: "PAID", label: "مدفوع" },
   { id: "REJECTED", label: "مرفوض" },
 ];
 
@@ -41,7 +45,8 @@ const statusStyles: Record<OrderStatus, string> = {
   NEW: "bg-amber-300/12 text-amber-200 ring-amber-200/15",
   PREPARING: "bg-sky-300/10 text-sky-200 ring-sky-200/15",
   READY: "bg-emerald-300/10 text-emerald-200 ring-emerald-200/15",
-  COMPLETED: "bg-stone-300/10 text-stone-300 ring-stone-200/10",
+  SERVED: "bg-violet-300/10 text-violet-200 ring-violet-200/15",
+  PAID: "bg-emerald-300/12 text-emerald-200 ring-emerald-200/20",
   REJECTED: "bg-red-300/10 text-red-200 ring-red-200/15",
 };
 
@@ -74,7 +79,7 @@ function OrderCard({
       className={`overflow-hidden rounded-[1.6rem] border bg-[#181411] shadow-[0_22px_60px_rgba(0,0,0,.22)] ${
         order.status === "NEW" ? "border-amber-200/20" : "border-white/[0.065]"
       } ${
-        order.status === "COMPLETED" || order.status === "REJECTED"
+        order.status === "PAID" || order.status === "REJECTED"
           ? "opacity-70"
           : ""
       }`}
@@ -177,13 +182,22 @@ function OrderCard({
           {order.status === "READY" && (
             <button
               disabled={busy}
-              onClick={() => onStatus("COMPLETED")}
+              onClick={() => onStatus("SERVED")}
               className="flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-stone-100 text-sm font-bold text-stone-950 transition hover:bg-white disabled:opacity-50"
             >
               <Check size={16} /> تم التقديم
             </button>
           )}
-          {(order.status === "COMPLETED" || order.status === "REJECTED") && (
+          {order.status === "SERVED" && (
+            <button
+              disabled={busy}
+              onClick={() => onStatus("PAID")}
+              className="flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-emerald-300 text-sm font-bold text-[#102117] transition hover:bg-emerald-200 disabled:opacity-50"
+            >
+              <CircleCheckBig size={16} /> تأكيد الدفع
+            </button>
+          )}
+          {(order.status === "PAID" || order.status === "REJECTED") && (
             <div className="flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-white/[0.035] text-xs text-stone-500">
               <CircleCheckBig size={15} /> لا يوجد إجراء مطلوب
             </div>
@@ -196,7 +210,7 @@ function OrderCard({
 
 export function StaffDashboard() {
   const [orders, setOrders] = useState<CafeOrder[]>([]);
-  const [filter, setFilter] = useState<"ALL" | OrderStatus>("ALL");
+  const [filter, setFilter] = useState<StaffFilter>("ALL");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -240,13 +254,15 @@ export function StaffDashboard() {
   const visibleOrders = useMemo(
     () =>
       orders
-        .filter((order) => filter === "ALL" || order.status === filter)
+        .filter((order) => {
+          if (filter === "ALL") return true;
+          if (filter === "UNPAID") return order.status !== "PAID";
+          return order.status === filter;
+        })
         .sort((a, b) => {
           if (filter === "ALL") {
-            const aFinished =
-              a.status === "COMPLETED" || a.status === "REJECTED";
-            const bFinished =
-              b.status === "COMPLETED" || b.status === "REJECTED";
+            const aFinished = a.status === "PAID" || a.status === "REJECTED";
+            const bFinished = b.status === "PAID" || b.status === "REJECTED";
             if (aFinished !== bFinished) return aFinished ? 1 : -1;
           }
           return Date.parse(b.createdAt) - Date.parse(a.createdAt);
@@ -285,7 +301,7 @@ export function StaffDashboard() {
       setOrders(await loadOrders());
       setFilter("ALL");
       setResetOpen(false);
-      setNotice("تم مسح الطلبات المنتهية والمرفوضة بنجاح");
+      setNotice("تم مسح الطلبات المدفوعة والمرفوضة بنجاح");
     } catch {
       setError("تعذّر تنظيف طلبات الديمو. جرّب مرة تانية.");
     } finally {
@@ -472,8 +488,8 @@ export function StaffDashboard() {
                 هل تريد مسح الطلبات المنتهية؟
               </h2>
               <p className="mt-2 text-sm leading-6 text-stone-500">
-                سيتم مسح الطلبات المكتملة والمرفوضة فقط. الطلبات الجديدة وقيد
-                التحضير والجاهزة ستبقى كما هي، ولن تتأثر منتجات المنيو.
+                سيتم مسح الطلبات المدفوعة والمرفوضة فقط. الطلبات الجديدة وقيد
+                التحضير والجاهزة والمقدمة ستبقى كما هي، ولن تتأثر منتجات المنيو.
               </p>
               <div className="mt-6 flex gap-2">
                 <button

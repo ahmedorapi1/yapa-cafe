@@ -44,7 +44,7 @@ export default function QrCodesPage() {
                 Table {entry.table}
               </h2>
               <p className="mt-2 break-all text-[10px] leading-5 text-stone-500" dir="ltr">
-                {entry.url}
+                {entry.urlPreview}
               </p>
               <a
                 href={entry.image}

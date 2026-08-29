@@ -96,9 +96,16 @@ export const statusCopy = {
     staffLabel: "جاهز",
     detail: "مشروباتك جاهزة وهتوصلك على الترابيزة.",
   },
-  COMPLETED: {
+  SERVED: {
     label: "تم تقديم الطلب",
-    staffLabel: "مكتمل",
+    staffLabel: "تم التقديم",
+    detail: "بالهنا والشفا. مستنيين طلبك الجاي.",
+  },
+  PAID: {
+    // Customer code maps PAID to SERVED. These customer-facing strings are a
+    // defense-in-depth fallback and intentionally reveal no payment state.
+    label: "تم تقديم الطلب",
+    staffLabel: "مدفوع",
     detail: "بالهنا والشفا. مستنيين طلبك الجاي.",
   },
   REJECTED: {

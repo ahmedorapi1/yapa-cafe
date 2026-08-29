@@ -3,17 +3,17 @@
   "entries": [
     {
       "table": 1,
-      "url": "https://yapa-cafe-f3fb.vercel.app/menu/1?qr=1",
+      "urlPreview": "/menu/1?table_qr_token=••••••••",
       "image": "/qrs/table-1.png"
     },
     {
       "table": 2,
-      "url": "https://yapa-cafe-f3fb.vercel.app/menu/2?qr=1",
+      "urlPreview": "/menu/2?table_qr_token=••••••••",
       "image": "/qrs/table-2.png"
     },
     {
       "table": 3,
-      "url": "https://yapa-cafe-f3fb.vercel.app/menu/3?qr=1",
+      "urlPreview": "/menu/3?table_qr_token=••••••••",
       "image": "/qrs/table-3.png"
     }
   ]

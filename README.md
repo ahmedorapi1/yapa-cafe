@@ -7,7 +7,7 @@ A premium, mobile-first QR café ordering MVP built with the Next.js App Router 
 - Arabic-first, RTL customer menus for Tables 1, 2, and 3
 - Six supplied Yapa product photos, copied from `data/` into `public/products/`
 - Animated category browsing, product details, ingredient reveal, cart, and order status
-- One-hour table ordering session with expiry protection
+- Server-validated table QR tokens and one-hour ordering sessions
 - Duplicate-submission guard and atomic order creation
 - Responsive realtime staff dashboard at `/staff`
 - Supabase PostgreSQL schema and Realtime subscriptions
@@ -34,17 +34,16 @@ Any customer table route other than `/menu/1`, `/menu/2`, or `/menu/3` is reject
 
 ## Local demo mode
 
-The app works immediately without credentials. Orders are kept in browser storage and synchronized between customer and staff tabs with `BroadcastChannel` and storage events.
-
-For a same-browser demo, keep `/menu/2` and `/staff` open in two tabs. Create an order in the customer tab and update it in the staff tab; the customer status changes without a refresh.
-
-Local demo data is browser-specific. Use Supabase for shared, persistent orders across devices.
+Without Supabase credentials, the menu and staff UI still render and existing
+browser-local demo orders remain available. Secure QR token validation and new
+ordering sessions require Supabase; localStorage is not allowed to mint or
+renew customer sessions.
 
 ## Supabase setup
 
 1. Create a Supabase project.
 2. Open its SQL Editor.
-3. Run [`supabase/schema.sql`](supabase/schema.sql). It creates the three data tables, the atomic order function, demo RLS policies, and Realtime publication entries.
+3. Run [`supabase/schema.sql`](supabase/schema.sql). It creates the four data tables, token/session RPCs, the atomic order function, demo RLS policies, and Realtime publication entries.
 4. Copy `.env.example` to `.env.local`.
 5. Add the project URL and anon key:
 
@@ -66,10 +65,20 @@ Set `NEXT_PUBLIC_APP_URL` to the production domain, then run:
 npm run qr:generate
 ```
 
-The command creates PNG files for Tables 1, 2, and 3 under `public/qrs`. View and download them at `/qr`. The generator rejects localhost because another device cannot open a localhost QR URL.
+The command creates a cryptographically random table token when one is not
+already present in the ignored `.env.local`, regenerates the three PNG files
+under `public/qrs`, and writes hash-only database seed SQL to
+`supabase/table-qr-token-seed.sql`. The raw tokens are embedded only in the QR
+images and the ignored local environment file; `/qr` displays a masked preview.
+
+After generating or rotating the QR tokens, run `supabase/schema.sql` and then
+`supabase/table-qr-token-seed.sql` in the Supabase SQL Editor before deploying
+the matching QR images. A clean `/menu/1`, `/menu/2`, or `/menu/3` URL can
+restore an existing valid one-hour session, but it cannot create a new one.
 
 ## Database model
 
+- `cafe_tables`: table number, active flag, and SHA-256 QR token hash
 - `sessions`: table session ID, creation time, and one-hour expiry
 - `orders`: table number, total, status, session, and timestamp
 - `order_items`: immutable product name, unit price, and quantity snapshots
@@ -78,7 +87,7 @@ The six products stay in the existing application data. Supabase stores an immut
 
 Order statuses follow:
 
-`NEW → PREPARING → READY → COMPLETED`
+`NEW → PREPARING → READY → SERVED → PAID`
 
 Staff can also mark a request as `REJECTED`.
 

@@ -10,7 +10,7 @@
     "build": "vite build",
     "start": "vinext start",
     "qr:generate": "node scripts/generate-qrs.mjs",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "test": "npm run build && node --test tests/*.test.mjs",
     "lint": "eslint app components lib types --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {

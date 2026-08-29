@@ -23,8 +23,14 @@ import {
   createOrder,
   loadOrder,
   OrderServiceError,
+  SessionServiceError,
   subscribeToOrder,
 } from "@/lib/orders/service";
+import {
+  getCustomerVisibleStatus,
+  maskPaidOrderForCustomer,
+} from "@/lib/orders/customer-status";
+import { parseMenuEntryUrl } from "@/lib/orders/menu-url";
 import type {
   CafeOrder,
   CartItem,
@@ -75,7 +81,9 @@ const categoryPresentation: Record<
   },
 };
 
-const statusSteps = ["NEW", "PREPARING", "READY", "COMPLETED"] as const;
+const statusSteps = ["NEW", "PREPARING", "READY", "SERVED"] as const;
+const QR_REQUIRED_MESSAGE =
+  "لإجراء طلب جديد، امسح QR الموجود على الترابيزة.";
 
 function formatPrice(price: number) {
   return `${price.toLocaleString("en-US")} EGP`;
@@ -147,13 +155,7 @@ function ProductCard({
   );
 }
 
-export function MenuExperience({
-  tableNumber,
-  newQrEntry = false,
-}: {
-  tableNumber: string;
-  newQrEntry?: boolean;
-}) {
+export function MenuExperience({ tableNumber }: { tableNumber: string }) {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [detailQuantity, setDetailQuantity] = useState(1);
   const [ingredientsOpen, setIngredientsOpen] = useState(false);
@@ -174,6 +176,9 @@ export function MenuExperience({
     (sum, item) => sum + item.product.price * item.quantity,
     0,
   );
+  const customerOrderStatus = currentOrder
+    ? getCustomerVisibleStatus(currentOrder.status)
+    : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -190,25 +195,43 @@ export function MenuExperience({
       const savedOrderId = localStorage.getItem(`yapa_active_order_${tableNumber}`);
       if (savedOrderId) setCurrentOrderId(savedOrderId);
 
-      void createOrRestoreSession(tableNumber, savedSession, newQrEntry)
+      const { tableQrToken, shouldCleanUrl, cleanUrl } = parseMenuEntryUrl(
+        window.location.href,
+      );
+
+      void createOrRestoreSession(tableNumber, savedSession, tableQrToken)
         .then((activeSession) => {
           if (cancelled) return;
-          localStorage.setItem(key, JSON.stringify(activeSession));
-          if (newQrEntry) {
-            window.history.replaceState(null, "", window.location.pathname);
+          if (shouldCleanUrl) {
+            window.history.replaceState(null, "", cleanUrl);
           }
+          if (!activeSession) {
+            localStorage.removeItem(key);
+            setSession(null);
+            setExpired(false);
+            setSessionError(QR_REQUIRED_MESSAGE);
+            return;
+          }
+          localStorage.setItem(key, JSON.stringify(activeSession));
           setSession(activeSession);
-          setExpired(
+          const sessionExpired =
             !activeSession.active ||
-              Date.parse(activeSession.expiresAt) <= timestamp(),
-          );
+            Date.parse(activeSession.expiresAt) <= timestamp();
+          setExpired(sessionExpired);
           setSessionError("");
         })
-        .catch(() => {
+        .catch((error) => {
           if (cancelled) return;
+          if (shouldCleanUrl) {
+            window.history.replaceState(null, "", cleanUrl);
+          }
           setSession(null);
+          setExpired(false);
           setSessionError(
-            "تعذّر بدء جلسة الطلب دلوقتي. اتأكد من الإنترنت وجرّب تفتح المنيو مرة تانية.",
+            error instanceof SessionServiceError &&
+              error.code === "INVALID_TABLE_QR_TOKEN"
+              ? QR_REQUIRED_MESSAGE
+              : "تعذّر بدء جلسة الطلب دلوقتي. اتأكد من الإنترنت وامسح QR مرة تانية.",
           );
         });
     }, 0);
@@ -216,7 +239,7 @@ export function MenuExperience({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [newQrEntry, tableNumber]);
+  }, [tableNumber]);
 
   useEffect(() => {
     if (!session) return;
@@ -233,14 +256,18 @@ export function MenuExperience({
     if (!currentOrderId) return;
     void loadOrder(currentOrderId)
       .then((order) => {
-        if (order) setCurrentOrder(order);
+        if (order) setCurrentOrder(maskPaidOrderForCustomer(order));
       })
       .catch(() => setStatusSyncError("تعذّر تحديث حالة الطلب مؤقتًا."));
-    return subscribeToOrder(currentOrderId, setCurrentOrder, {
-      onConnected: () => setStatusSyncError(""),
-      onError: () =>
-        setStatusSyncError("تعذّر تحديث حالة الطلب مؤقتًا. بنحاول نتصل تاني."),
-    });
+    return subscribeToOrder(
+      currentOrderId,
+      (order) => setCurrentOrder(maskPaidOrderForCustomer(order)),
+      {
+        onConnected: () => setStatusSyncError(""),
+        onError: () =>
+          setStatusSyncError("تعذّر تحديث حالة الطلب مؤقتًا. بنحاول نتصل تاني."),
+      },
+    );
   }, [currentOrderId]);
 
   const addToCart = useCallback((product: Product, quantity = 1) => {
@@ -323,7 +350,7 @@ export function MenuExperience({
       });
       localStorage.setItem(`yapa_active_order_${tableNumber}`, order.id);
       setCurrentOrderId(order.id);
-      setCurrentOrder(order);
+      setCurrentOrder(maskPaidOrderForCustomer(order));
       setCart([]);
       setCartOpen(false);
       setStatusOpen(true);
@@ -382,8 +409,8 @@ export function MenuExperience({
           >
             <TimerOff className="mt-0.5 shrink-0" size={18} />
             <p>
-              انتهت جلسة الطلب. من فضلك اعمل Scan للـ QR الموجود على الترابيزة مرة تانية.
-              تقدر تتفرج على المنيو، لكن تأكيد طلب جديد متوقف.
+              {QR_REQUIRED_MESSAGE} تقدر تتفرج على المنيو، لكن تأكيد طلب جديد
+              متوقف.
             </p>
           </motion.div>
         )}
@@ -410,7 +437,7 @@ export function MenuExperience({
                   Order #{currentOrder.displayId}
                 </span>
                 <span className="mt-0.5 block text-sm font-semibold text-stone-100">
-                  {statusCopy[currentOrder.status].label}
+                  {statusCopy[customerOrderStatus ?? "SERVED"].label}
                 </span>
               </span>
             </span>
@@ -775,10 +802,10 @@ export function MenuExperience({
               Order received
             </p>
             <h2 className="mt-2 text-3xl font-semibold text-white">
-              {statusCopy[currentOrder.status].label}
+              {statusCopy[customerOrderStatus ?? "SERVED"].label}
             </h2>
             <p className="mx-auto mt-3 max-w-sm text-sm leading-7 text-stone-400">
-              {statusCopy[currentOrder.status].detail}
+              {statusCopy[customerOrderStatus ?? "SERVED"].detail}
             </p>
 
             {statusSyncError && (
@@ -801,7 +828,7 @@ export function MenuExperience({
                 <div className="flex items-center" dir="ltr">
                   {statusSteps.map((step, index) => {
                     const currentIndex = statusSteps.indexOf(
-                      currentOrder.status as (typeof statusSteps)[number],
+                      customerOrderStatus as (typeof statusSteps)[number],
                     );
                     const complete = index <= currentIndex;
                     return (

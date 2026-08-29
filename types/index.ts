@@ -4,7 +4,8 @@ export type OrderStatus =
   | "NEW"
   | "PREPARING"
   | "READY"
-  | "COMPLETED"
+  | "SERVED"
+  | "PAID"
   | "REJECTED";
 
 export interface Product {

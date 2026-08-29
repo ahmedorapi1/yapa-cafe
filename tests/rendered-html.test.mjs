@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 async function render(pathname) {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
+  const workerUrl = new URL(
+    "../.vercel/output/functions/__server.func/index.mjs",
+    import.meta.url,
+  );
   const { default: worker } = await import(workerUrl.href);
 
   return worker.fetch(
@@ -11,13 +13,7 @@ async function render(pathname) {
       headers: { accept: "text/html" },
     }),
     {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
       waitUntil() {},
-      passThroughOnException() {},
     },
   );
 }
@@ -54,6 +50,8 @@ test("server-renders the staff dashboard", async () => {
   const html = await response.text();
   assert.match(html, /Yapa Staff/);
   assert.match(html, /Live service/);
+  assert.match(html, /غير مدفوع/);
+  assert.match(html, /مدفوع/);
   assert.match(html, /Yapa Café/);
   assert.doesNotMatch(html, /Starter Project|codex-preview/i);
 });
@@ -69,4 +67,7 @@ test("server-renders all three QR codes", async () => {
   assert.match(html, /\/menu\/1/);
   assert.match(html, /\/menu\/2/);
   assert.match(html, /\/menu\/3/);
+  assert.match(html, /table_qr_token=/);
+  assert.match(html, /••••••••/);
+  assert.doesNotMatch(html, /table_qr_token=[A-Za-z0-9_-]{32,}/);
 });

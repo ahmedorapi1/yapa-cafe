@@ -5,6 +5,7 @@ import {
   isSupabaseConfigured,
   logSupabaseError,
 } from "@/lib/supabase/client";
+import { resolveSessionAccess } from "@/lib/orders/session-access";
 import { createUuid } from "@/lib/utils/createId";
 import type {
   CafeOrder,
@@ -15,8 +16,7 @@ import type {
 
 const ORDERS_KEY = "yapa_demo_orders_v1";
 const CHANNEL_NAME = "yapa_orders_channel";
-const SESSION_DURATION_MS = 60 * 60 * 1000;
-const TERMINAL_STATUSES: OrderStatus[] = ["COMPLETED", "REJECTED"];
+const TERMINAL_STATUSES: OrderStatus[] = ["PAID", "REJECTED"];
 const isDevelopment = process.env.NODE_ENV !== "production";
 
 type RealtimeOptions = {
@@ -35,13 +35,24 @@ export class OrderServiceError extends Error {
   }
 }
 
+export class SessionServiceError extends Error {
+  constructor(
+    public readonly code: "INVALID_TABLE_QR_TOKEN" | "SESSION_FAILED",
+    options?: { cause?: unknown },
+  ) {
+    super(code);
+    this.name = "SessionServiceError";
+    this.cause = options?.cause;
+  }
+}
+
 function mapOrder(row: Record<string, unknown>): CafeOrder {
   const rawItems = (row.order_items ?? []) as Array<Record<string, unknown>>;
   return {
     id: String(row.id),
     displayId: Number(row.display_id),
     tableNumber: String(row.table_number),
-    status: row.status as OrderStatus,
+    status: normalizeOrderStatus(row.status),
     total: Number(row.total),
     sessionId: String(row.session_id),
     createdAt: String(row.created_at),
@@ -53,6 +64,10 @@ function mapOrder(row: Record<string, unknown>): CafeOrder {
       quantity: Number(item.quantity),
     })),
   };
+}
+
+function normalizeOrderStatus(status: unknown): OrderStatus {
+  return status === "COMPLETED" ? "PAID" : (status as OrderStatus);
 }
 
 function mapSession(row: Record<string, unknown>): OrderingSession {
@@ -76,21 +91,16 @@ function isExpiredSession(session: OrderingSession) {
   return !session.active || Date.parse(session.expiresAt) <= Date.now();
 }
 
-function newSession(tableNumber: string): OrderingSession {
-  const createdAt = new Date();
-  return {
-    id: createUuid(),
-    tableNumber,
-    createdAt: createdAt.toISOString(),
-    expiresAt: new Date(createdAt.getTime() + SESSION_DURATION_MS).toISOString(),
-    active: true,
-  };
-}
-
 function getLocalOrders(): CafeOrder[] {
   if (typeof window === "undefined") return [];
   try {
-    return JSON.parse(localStorage.getItem(ORDERS_KEY) ?? "[]") as CafeOrder[];
+    const orders = JSON.parse(
+      localStorage.getItem(ORDERS_KEY) ?? "[]",
+    ) as CafeOrder[];
+    return orders.map((order) => ({
+      ...order,
+      status: normalizeOrderStatus(order.status),
+    }));
   } catch {
     return [];
   }
@@ -109,68 +119,63 @@ function publishLocalOrders(orders: CafeOrder[]) {
 export async function createOrRestoreSession(
   tableNumber: string,
   savedSession: OrderingSession | null,
-  startNewSession = false,
-) {
+  tableQrToken: string | null,
+): Promise<OrderingSession | null> {
   const supabase = getSupabase();
   if (!supabase) {
-    const localSession =
-      savedSession?.tableNumber === tableNumber &&
-      !(startNewSession && isExpiredSession(savedSession))
-        ? savedSession
-        : newSession(tableNumber);
-    logSessionStatus(localSession);
-    return localSession;
+    // Local fallback can restore its existing device-local demo session, but
+    // it cannot securely validate a physical QR token or mint a new session.
+    if (savedSession?.tableNumber !== tableNumber) return null;
+    logSessionStatus(savedSession);
+    return savedSession;
   }
 
-  // Supabase is the source of truth for a saved session. An expired or
-  // inactive database record is returned as-is so a reload cannot silently
-  // grant the customer another hour.
-  if (savedSession?.id) {
-    const { data, error } = await supabase
-      .from("sessions")
-      .select("id, table_number, created_at, expires_at, active")
-      .eq("id", savedSession.id)
-      .maybeSingle();
+  const session = await resolveSessionAccess({
+    tableNumber,
+    savedSessionId: savedSession?.id ?? null,
+    tableQrToken,
+    actions: {
+      async startSession(input) {
+        const { data, error } = await supabase
+          .rpc("start_table_session", {
+            p_table_number: input.tableNumber,
+            p_table_qr_token: input.tableQrToken,
+            p_existing_session_id: input.existingSessionId,
+          })
+          .single();
 
-    if (error) {
-      logSupabaseError("session restore", error);
-      throw error;
-    }
-    if (data) {
-      const restored = mapSession(data);
-      if (restored.tableNumber === tableNumber) {
-        if (!startNewSession || !isExpiredSession(restored)) {
-          logSessionStatus(restored);
-          return restored;
+        if (error) {
+          logSupabaseError("start_table_session RPC", error);
+          if (error.message.includes("invalid_table_qr_token")) {
+            throw new SessionServiceError("INVALID_TABLE_QR_TOKEN", {
+              cause: error,
+            });
+          }
+          throw new SessionServiceError("SESSION_FAILED", { cause: error });
         }
-      } else if (!startNewSession) {
-        const invalidSession = { ...restored, active: false };
-        logSessionStatus(invalidSession);
-        return invalidSession;
-      }
-    }
-  }
 
-  const session = newSession(tableNumber);
-  const { data, error } = await supabase
-    .from("sessions")
-    .insert({
-      id: session.id,
-      table_number: session.tableNumber,
-      created_at: session.createdAt,
-      expires_at: session.expiresAt,
-      active: session.active,
-    })
-    .select("id, table_number, created_at, expires_at, active")
-    .single();
+        return mapSession(data as Record<string, unknown>);
+      },
+      async restoreSession(input) {
+        const { data, error } = await supabase
+          .rpc("restore_table_session", {
+            p_table_number: input.tableNumber,
+            p_session_id: input.sessionId,
+          })
+          .maybeSingle();
 
-  if (error) {
-    logSupabaseError("session creation", error);
-    throw error;
-  }
-  const created = mapSession(data);
-  logSessionStatus(created);
-  return created;
+        if (error) {
+          logSupabaseError("restore_table_session RPC", error);
+          throw new SessionServiceError("SESSION_FAILED", { cause: error });
+        }
+
+        return data ? mapSession(data as Record<string, unknown>) : null;
+      },
+    },
+  });
+
+  if (session) logSessionStatus(session);
+  return session;
 }
 
 export async function resetDemo() {

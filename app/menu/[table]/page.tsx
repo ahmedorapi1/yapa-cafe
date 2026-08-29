@@ -10,13 +10,10 @@ export const metadata: Metadata = {
 
 export default async function MenuPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ table: string }>;
-  searchParams?: Promise<{ qr?: string | string[] }>;
 }) {
   const { table } = await params;
-  const query = await searchParams;
   if (!(["1", "2", "3"] as const).includes(table as "1" | "2" | "3")) {
     return (
       <main className="menu-shell grid min-h-dvh place-items-center px-6 text-center text-stone-50">
@@ -32,10 +29,5 @@ export default async function MenuPage({
       </main>
     );
   }
-  const qrValue = query?.qr;
-  const newQrEntry = Array.isArray(qrValue)
-    ? qrValue.includes("1")
-    : qrValue === "1";
-
-  return <MenuExperience tableNumber={table} newQrEntry={newQrEntry} />;
+  return <MenuExperience tableNumber={table} />;
 }
