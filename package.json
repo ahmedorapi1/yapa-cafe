@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "vinext dev",
-    "build": "vinext build",
+    "build": "vite build",
     "start": "vinext start",
     "qr:generate": "node scripts/generate-qrs.mjs",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
@@ -17,6 +17,7 @@
     "@supabase/supabase-js": "^2.112.4",
     "framer-motion": "^13.1.1",
     "lucide-react": "^1.35.0",
+    "nitro": "^3.0.260610-beta",
     "qrcode": "^1.5.4",
     "react": "19.2.6",
     "react-dom": "19.2.6"
