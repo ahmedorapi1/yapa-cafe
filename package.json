@@ -9,6 +9,7 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
+    "qr:generate": "node scripts/generate-qrs.mjs",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
     "lint": "eslint app components lib types --ignore-pattern dist --ignore-pattern .next"
   },
@@ -16,6 +17,7 @@
     "@supabase/supabase-js": "^2.112.4",
     "framer-motion": "^13.1.1",
     "lucide-react": "^1.35.0",
+    "qrcode": "^1.5.4",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
@@ -26,6 +28,7 @@
     "@next/eslint-plugin-next": "16.2.6",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",

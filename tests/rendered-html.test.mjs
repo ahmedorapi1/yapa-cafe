@@ -22,18 +22,29 @@ async function render(pathname) {
   );
 }
 
-test("server-renders the table menu", async () => {
-  const response = await render("/menu/12");
+for (const table of ["1", "2", "3"]) {
+  test(`server-renders the Table ${table} menu`, async () => {
+    const response = await render(`/menu/${table}`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
+
+    const html = await response.text();
+    assert.match(html, /YAPA/);
+    assert.match(html, new RegExp(`Table\\s*(?:<!-- -->)?\\s*${table}`));
+    assert.match(html, /Classic Tea/);
+    assert.match(html, /Turkish Coffee/);
+    assert.match(html, /Yapa Café/);
+    assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
+  });
+}
+
+test("rejects an invalid table route", async () => {
+  const response = await render("/menu/99");
   assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /YAPA/);
-  assert.match(html, /Table\s*(?:<!-- -->)?\s*12/);
-  assert.match(html, /Classic Tea/);
-  assert.match(html, /Turkish Coffee/);
-  assert.match(html, /Yapa Café/);
-  assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
+  assert.match(html, /Invalid table/);
+  assert.doesNotMatch(html, /Classic Tea/);
 });
 
 test("server-renders the staff dashboard", async () => {
@@ -45,4 +56,17 @@ test("server-renders the staff dashboard", async () => {
   assert.match(html, /Live service/);
   assert.match(html, /Yapa Café/);
   assert.doesNotMatch(html, /Starter Project|codex-preview/i);
+});
+
+test("server-renders all three QR codes", async () => {
+  const response = await render("/qr");
+  assert.equal(response.status, 200);
+
+  const html = await response.text();
+  assert.match(html, /Table 1/);
+  assert.match(html, /Table 2/);
+  assert.match(html, /Table 3/);
+  assert.match(html, /\/menu\/1/);
+  assert.match(html, /\/menu\/2/);
+  assert.match(html, /\/menu\/3/);
 });

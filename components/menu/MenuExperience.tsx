@@ -3,30 +3,28 @@
 import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
 import {
+  ArrowLeft,
   Check,
   CheckCircle2,
   ChevronDown,
   ClipboardList,
-  Coffee,
-  GlassWater,
   Minus,
   Plus,
   ShoppingBag,
-  Snowflake,
   Sparkles,
   TimerOff,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { categories, products, statusCopy } from "@/lib/data/products";
 import {
+  createOrRestoreSession,
   createOrder,
-  loadOrders,
-  subscribeToOrders,
-  syncSession,
+  loadOrder,
+  OrderServiceError,
+  subscribeToOrder,
 } from "@/lib/orders/service";
-import { createId } from "@/lib/utils/createId";
 import type {
   CafeOrder,
   CartItem,
@@ -37,10 +35,44 @@ import type {
 import { BottomSheet } from "@/components/shared/BottomSheet";
 import { BrandMark } from "@/components/shared/BrandMark";
 
-const categoryIcons = {
-  hot: Coffee,
-  fresh: GlassWater,
-  cold: Snowflake,
+const categoryPresentation: Record<
+  Category,
+  {
+    sectionId: string;
+    image: string;
+    treatment: string;
+    glow: string;
+    accent: string;
+    arrow: string;
+  }
+> = {
+  hot: {
+    sectionId: "hot-drinks",
+    image: "/products/2.png",
+    treatment:
+      "border-amber-200/20 bg-[linear-gradient(118deg,rgba(35,17,8,.9)_4%,rgba(91,43,13,.5)_51%,rgba(255,169,57,.12)_100%)] shadow-[0_24px_60px_rgba(38,17,6,.4)]",
+    glow: "bg-amber-300/25",
+    accent: "bg-amber-200",
+    arrow: "bg-amber-100/15 text-amber-50 ring-amber-100/20",
+  },
+  fresh: {
+    sectionId: "fresh-drinks",
+    image: "/products/4.png",
+    treatment:
+      "border-lime-200/20 bg-[linear-gradient(118deg,rgba(8,28,17,.9)_4%,rgba(32,78,24,.5)_51%,rgba(213,255,76,.12)_100%)] shadow-[0_24px_60px_rgba(8,31,17,.38)]",
+    glow: "bg-lime-300/20",
+    accent: "bg-lime-200",
+    arrow: "bg-lime-100/15 text-lime-50 ring-lime-100/20",
+  },
+  cold: {
+    sectionId: "cold-drinks",
+    image: "/products/5.png",
+    treatment:
+      "border-cyan-100/20 bg-[linear-gradient(118deg,rgba(7,22,35,.9)_4%,rgba(17,67,87,.5)_51%,rgba(117,231,255,.12)_100%)] shadow-[0_24px_60px_rgba(5,24,40,.4)]",
+    glow: "bg-cyan-200/20",
+    accent: "bg-cyan-100",
+    arrow: "bg-cyan-50/15 text-cyan-50 ring-cyan-50/20",
+  },
 };
 
 const statusSteps = ["NEW", "PREPARING", "READY", "COMPLETED"] as const;
@@ -115,8 +147,13 @@ function ProductCard({
   );
 }
 
-export function MenuExperience({ tableNumber }: { tableNumber: string }) {
-  const [activeCategory, setActiveCategory] = useState<Category>("hot");
+export function MenuExperience({
+  tableNumber,
+  newQrEntry = false,
+}: {
+  tableNumber: string;
+  newQrEntry?: boolean;
+}) {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [detailQuantity, setDetailQuantity] = useState(1);
   const [ingredientsOpen, setIngredientsOpen] = useState(false);
@@ -129,11 +166,8 @@ export function MenuExperience({ tableNumber }: { tableNumber: string }) {
   const [submitError, setSubmitError] = useState("");
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
   const [currentOrder, setCurrentOrder] = useState<CafeOrder | null>(null);
-
-  const activeProducts = useMemo(
-    () => products.filter((product) => product.category === activeCategory),
-    [activeCategory],
-  );
+  const [sessionError, setSessionError] = useState("");
+  const [statusSyncError, setStatusSyncError] = useState("");
 
   const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const total = cart.reduce(
@@ -142,46 +176,54 @@ export function MenuExperience({ tableNumber }: { tableNumber: string }) {
   );
 
   useEffect(() => {
+    let cancelled = false;
     const timer = window.setTimeout(() => {
       const key = sessionKey(tableNumber);
-      const now = timestamp();
-      let activeSession: OrderingSession | null = null;
+      let savedSession: OrderingSession | null = null;
       try {
         const saved = localStorage.getItem(key);
-        const parsed = saved ? (JSON.parse(saved) as OrderingSession) : null;
-        if (parsed && Date.parse(parsed.expiresAt) > now && parsed.active) {
-          activeSession = parsed;
-        }
+        savedSession = saved ? (JSON.parse(saved) as OrderingSession) : null;
       } catch {
-        activeSession = null;
+        savedSession = null;
       }
-
-      if (!activeSession) {
-        const createdAt = new Date();
-        activeSession = {
-          id: createId(),
-          tableNumber,
-          createdAt: createdAt.toISOString(),
-          expiresAt: new Date(createdAt.getTime() + 60 * 60 * 1000).toISOString(),
-          active: true,
-        };
-        localStorage.setItem(key, JSON.stringify(activeSession));
-        void syncSession(activeSession);
-      }
-
-      setSession(activeSession);
-      setExpired(Date.parse(activeSession.expiresAt) <= timestamp());
 
       const savedOrderId = localStorage.getItem(`yapa_active_order_${tableNumber}`);
       if (savedOrderId) setCurrentOrderId(savedOrderId);
+
+      void createOrRestoreSession(tableNumber, savedSession, newQrEntry)
+        .then((activeSession) => {
+          if (cancelled) return;
+          localStorage.setItem(key, JSON.stringify(activeSession));
+          if (newQrEntry) {
+            window.history.replaceState(null, "", window.location.pathname);
+          }
+          setSession(activeSession);
+          setExpired(
+            !activeSession.active ||
+              Date.parse(activeSession.expiresAt) <= timestamp(),
+          );
+          setSessionError("");
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setSession(null);
+          setSessionError(
+            "تعذّر بدء جلسة الطلب دلوقتي. اتأكد من الإنترنت وجرّب تفتح المنيو مرة تانية.",
+          );
+        });
     }, 0);
-    return () => window.clearTimeout(timer);
-  }, [tableNumber]);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [newQrEntry, tableNumber]);
 
   useEffect(() => {
     if (!session) return;
     const updateExpiry = () =>
-      setExpired(Date.parse(session.expiresAt) <= timestamp());
+      setExpired(
+        !session.active || Date.parse(session.expiresAt) <= timestamp(),
+      );
     updateExpiry();
     const timer = window.setInterval(updateExpiry, 1000);
     return () => window.clearInterval(timer);
@@ -189,12 +231,16 @@ export function MenuExperience({ tableNumber }: { tableNumber: string }) {
 
   useEffect(() => {
     if (!currentOrderId) return;
-    const applyOrders = (orders: CafeOrder[]) => {
-      const match = orders.find((order) => order.id === currentOrderId);
-      if (match) setCurrentOrder(match);
-    };
-    void loadOrders().then(applyOrders).catch(() => undefined);
-    return subscribeToOrders(applyOrders);
+    void loadOrder(currentOrderId)
+      .then((order) => {
+        if (order) setCurrentOrder(order);
+      })
+      .catch(() => setStatusSyncError("تعذّر تحديث حالة الطلب مؤقتًا."));
+    return subscribeToOrder(currentOrderId, setCurrentOrder, {
+      onConnected: () => setStatusSyncError(""),
+      onError: () =>
+        setStatusSyncError("تعذّر تحديث حالة الطلب مؤقتًا. بنحاول نتصل تاني."),
+    });
   }, [currentOrderId]);
 
   const addToCart = useCallback((product: Product, quantity = 1) => {
@@ -228,6 +274,12 @@ export function MenuExperience({ tableNumber }: { tableNumber: string }) {
     setDetailQuantity(1);
     setIngredientsOpen(false);
   };
+
+  const scrollToCategory = useCallback((category: Category) => {
+    document
+      .getElementById(categoryPresentation[category].sectionId)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   const placeOrder = async () => {
     if (!session || expired || !cart.length || submitting) return;
@@ -275,8 +327,18 @@ export function MenuExperience({ tableNumber }: { tableNumber: string }) {
       setCart([]);
       setCartOpen(false);
       setStatusOpen(true);
-    } catch {
-      setSubmitError("حصلت مشكلة بسيطة. جرّب تأكيد الطلب مرة تانية.");
+    } catch (error) {
+      if (
+        error instanceof OrderServiceError &&
+        error.code === "SESSION_EXPIRED"
+      ) {
+        setExpired(true);
+        setSubmitError(
+          "انتهت جلسة الطلب. من فضلك اعمل Scan للـ QR الموجود على الترابيزة مرة تانية.",
+        );
+      } else {
+        setSubmitError("حصلت مشكلة بسيطة. جرّب تأكيد الطلب مرة تانية.");
+      }
       localStorage.removeItem(duplicateKey);
     } finally {
       setSubmitting(false);
@@ -320,10 +382,16 @@ export function MenuExperience({ tableNumber }: { tableNumber: string }) {
           >
             <TimerOff className="mt-0.5 shrink-0" size={18} />
             <p>
-              انتهت جلسة الطلب. من فضلك امسح QR الموجود على الترابيزة مرة تانية.
+              انتهت جلسة الطلب. من فضلك اعمل Scan للـ QR الموجود على الترابيزة مرة تانية.
               تقدر تتفرج على المنيو، لكن تأكيد طلب جديد متوقف.
             </p>
           </motion.div>
+        )}
+
+        {sessionError && (
+          <div className="mt-6 rounded-2xl border border-red-300/15 bg-red-300/[0.07] p-4 text-sm leading-6 text-red-100">
+            {sessionError}
+          </div>
         )}
 
         {currentOrder && (
@@ -353,43 +421,70 @@ export function MenuExperience({ tableNumber }: { tableNumber: string }) {
         <div className="mt-9">
           <div className="mb-4 flex items-end justify-between">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-amber-200/60">
-                Explore
+              <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-amber-200/60" dir="ltr">
+                Explore the menu
               </p>
-              <h2 className="mt-1 text-xl font-semibold text-stone-100">اختار القسم</h2>
+              <h2 className="mt-1 text-xl font-semibold text-stone-100">اختار عالم مشروبك</h2>
             </div>
-            <span className="text-xs text-stone-500">٦ مشروبات</span>
+            <span className="text-xs text-stone-500">اسحب للتصفح</span>
           </div>
 
-          <div className="grid grid-cols-3 gap-2.5 sm:max-w-2xl sm:gap-3">
+          <div
+            className="-mx-5 flex snap-x snap-mandatory gap-3.5 overflow-x-auto px-5 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0"
+            aria-label="أقسام المشروبات"
+          >
             {categories.map((category, index) => {
-              const Icon = categoryIcons[category.id];
-              const active = category.id === activeCategory;
+              const presentation = categoryPresentation[category.id];
+              const productCount = products.filter(
+                (product) => product.category === category.id,
+              ).length;
+
               return (
                 <motion.button
                   key={category.id}
-                  onClick={() => setActiveCategory(category.id)}
+                  type="button"
+                  aria-controls={presentation.sectionId}
+                  onClick={() => scrollToCategory(category.id)}
                   initial={{ opacity: 0, y: 14 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.08 * index }}
-                  whileTap={{ scale: 0.97 }}
-                  className={`relative min-h-28 overflow-hidden rounded-[1.4rem] p-3 text-right transition sm:min-h-32 sm:p-4 ${
-                    active
-                      ? "bg-amber-300 text-[#22160c] shadow-[0_16px_38px_rgba(229,169,78,.15)]"
-                      : "bg-white/[0.045] text-stone-200 ring-1 ring-white/[0.055] hover:bg-white/[0.07]"
-                  }`}
+                  transition={{ delay: 0.08 * index, duration: 0.38 }}
+                  whileTap={{ scale: 0.985 }}
+                  className={`group relative h-[11.75rem] w-[82vw] max-w-[22rem] shrink-0 snap-start overflow-hidden rounded-[1.65rem] border text-right focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:w-auto ${presentation.treatment}`}
                 >
-                  <Icon
-                    size={23}
-                    strokeWidth={1.7}
-                    className={active ? "text-[#382415]" : "text-amber-200/80"}
+                  <Image
+                    src={presentation.image}
+                    alt=""
+                    fill
+                    sizes="(max-width: 639px) 82vw, 33vw"
+                    priority={index === 0}
+                    className="object-cover object-center opacity-[0.78] transition duration-700 group-hover:scale-[1.025] group-hover:opacity-[0.84]"
                   />
-                  <span className="absolute inset-x-3 bottom-3 sm:inset-x-4 sm:bottom-4">
-                    <span className="block text-[9px] font-bold uppercase tracking-[0.14em] opacity-60" dir="ltr">
-                      {category.eyebrow}
+                  <span className="absolute inset-0 bg-gradient-to-l from-black/15 via-black/20 to-black/65" />
+                  <span
+                    className={`absolute -left-8 -top-10 size-32 rounded-full blur-3xl ${presentation.glow}`}
+                  />
+
+                  <span className="absolute inset-x-4 top-4 flex items-center justify-between">
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-medium text-white/80 backdrop-blur-md">
+                      {productCount.toLocaleString("ar-EG")} مشروب
                     </span>
-                    <span className="mt-1 block text-xs font-semibold leading-4 sm:text-sm">
+                    <span
+                      className={`grid size-9 place-items-center rounded-full ring-1 backdrop-blur-md ${presentation.arrow}`}
+                    >
+                      <ArrowLeft size={16} strokeWidth={1.8} />
+                    </span>
+                  </span>
+
+                  <span className="absolute inset-x-5 bottom-5">
+                    <span className={`mb-3 block h-0.5 w-8 rounded-full ${presentation.accent}`} />
+                    <span className="block text-[1.35rem] font-semibold leading-none tracking-tight text-white">
                       {category.label}
+                    </span>
+                    <span
+                      className="mt-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-white/65"
+                      dir="ltr"
+                    >
+                      {category.eyebrow}
                     </span>
                   </span>
                 </motion.button>
@@ -398,41 +493,62 @@ export function MenuExperience({ tableNumber }: { tableNumber: string }) {
           </div>
         </div>
 
-        <section className="mt-10">
-          <div className="mb-4 flex items-end justify-between">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-amber-200/60" dir="ltr">
-                {categories.find((category) => category.id === activeCategory)?.eyebrow}
-              </p>
-              <h2 className="mt-1 text-xl font-semibold text-stone-100">
-                {categories.find((category) => category.id === activeCategory)?.label}
-              </h2>
-            </div>
-            <p className="text-xs text-stone-500">اضغط للتفاصيل</p>
-          </div>
+        <div className="mt-12 space-y-16">
+          {categories.map((category, index) => {
+            const presentation = categoryPresentation[category.id];
+            const categoryProducts = products.filter(
+              (product) => product.category === category.id,
+            );
+            const headingId = `${presentation.sectionId}-heading`;
 
-          <AnimatePresence mode="popLayout">
-            <motion.div
-              key={activeCategory}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.28 }}
-              className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-4"
-            >
-              {activeProducts.map((product) => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  onOpen={() => openProduct(product)}
-                  onQuickAdd={() => {
-                    if (!expired) addToCart(product);
-                  }}
-                />
-              ))}
-            </motion.div>
-          </AnimatePresence>
-        </section>
+            return (
+              <motion.section
+                key={category.id}
+                id={presentation.sectionId}
+                aria-labelledby={headingId}
+                initial={{ opacity: 0, y: 14 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.08 }}
+                transition={{ duration: 0.4, delay: index * 0.04 }}
+                className="scroll-mt-8"
+              >
+                <div className="mb-4 flex items-end justify-between gap-4">
+                  <div className="flex items-stretch gap-3">
+                    <span className={`w-0.5 rounded-full ${presentation.accent}`} />
+                    <div>
+                      <h2
+                        id={headingId}
+                        className="text-xl font-semibold tracking-tight text-stone-100"
+                      >
+                        {category.label}
+                      </h2>
+                      <p
+                        className="mt-1 text-[10px] font-bold uppercase tracking-[0.22em] text-stone-500"
+                        dir="ltr"
+                      >
+                        {category.eyebrow}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="shrink-0 text-xs text-stone-500">
+                    {categoryProducts.length.toLocaleString("ar-EG")} مشروب
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-4">
+                  {categoryProducts.map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      onOpen={() => openProduct(product)}
+                      onQuickAdd={() => addToCart(product)}
+                    />
+                  ))}
+                </div>
+              </motion.section>
+            );
+          })}
+        </div>
       </section>
 
       <BottomSheet
@@ -528,7 +644,6 @@ export function MenuExperience({ tableNumber }: { tableNumber: string }) {
                   </button>
                 </div>
                 <button
-                  disabled={expired}
                   onClick={() => {
                     addToCart(selectedProduct, detailQuantity);
                     setSelectedProduct(null);
@@ -621,7 +736,7 @@ export function MenuExperience({ tableNumber }: { tableNumber: string }) {
           )}
 
           <button
-            disabled={!cart.length || expired || submitting}
+            disabled={!cart.length || !session || expired || submitting}
             onClick={placeOrder}
             className="mt-6 flex h-15 w-full items-center justify-center gap-2 rounded-full bg-amber-300 px-6 font-bold text-[#22150b] transition hover:bg-amber-200 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -665,6 +780,12 @@ export function MenuExperience({ tableNumber }: { tableNumber: string }) {
             <p className="mx-auto mt-3 max-w-sm text-sm leading-7 text-stone-400">
               {statusCopy[currentOrder.status].detail}
             </p>
+
+            {statusSyncError && (
+              <p className="mx-auto mt-3 max-w-sm rounded-xl bg-red-300/10 px-3 py-2 text-xs leading-5 text-red-200">
+                {statusSyncError}
+              </p>
+            )}
 
             <div className="mt-6 flex items-center justify-center gap-3 text-sm">
               <span className="rounded-full bg-white/[0.055] px-4 py-2 text-stone-300" dir="ltr">

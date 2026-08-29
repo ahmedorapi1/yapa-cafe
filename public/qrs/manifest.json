@@ -1,0 +1,20 @@
+{
+  "baseUrl": "http://192.168.100.30:3000",
+  "entries": [
+    {
+      "table": 1,
+      "url": "http://192.168.100.30:3000/menu/1?qr=1",
+      "image": "/qrs/table-1.png"
+    },
+    {
+      "table": 2,
+      "url": "http://192.168.100.30:3000/menu/2?qr=1",
+      "image": "/qrs/table-2.png"
+    },
+    {
+      "table": 3,
+      "url": "http://192.168.100.30:3000/menu/3?qr=1",
+      "image": "/qrs/table-3.png"
+    }
+  ]
+}

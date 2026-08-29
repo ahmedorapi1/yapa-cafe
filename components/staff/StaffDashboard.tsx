@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   BellRing,
   Check,
@@ -9,6 +9,7 @@ import {
   Clock3,
   Coffee,
   RefreshCw,
+  Trash2,
   UtensilsCrossed,
   X,
 } from "lucide-react";
@@ -18,11 +19,14 @@ import { statusCopy } from "@/lib/data/products";
 import {
   isSupabaseConfigured,
   loadOrders,
+  resetDemo,
   subscribeToOrders,
   updateOrderStatus,
 } from "@/lib/orders/service";
 import type { CafeOrder, OrderStatus } from "@/types";
 import { BrandMark } from "@/components/shared/BrandMark";
+
+const REALTIME_ERROR = "انقطع التحديث المباشر مؤقتًا. بنحاول نتصل تاني.";
 
 const filters: Array<{ id: "ALL" | OrderStatus; label: string }> = [
   { id: "ALL", label: "الكل" },
@@ -30,6 +34,7 @@ const filters: Array<{ id: "ALL" | OrderStatus; label: string }> = [
   { id: "PREPARING", label: "قيد التحضير" },
   { id: "READY", label: "جاهز" },
   { id: "COMPLETED", label: "مكتمل" },
+  { id: "REJECTED", label: "مرفوض" },
 ];
 
 const statusStyles: Record<OrderStatus, string> = {
@@ -68,6 +73,10 @@ function OrderCard({
       exit={{ opacity: 0, scale: 0.97 }}
       className={`overflow-hidden rounded-[1.6rem] border bg-[#181411] shadow-[0_22px_60px_rgba(0,0,0,.22)] ${
         order.status === "NEW" ? "border-amber-200/20" : "border-white/[0.065]"
+      } ${
+        order.status === "COMPLETED" || order.status === "REJECTED"
+          ? "opacity-70"
+          : ""
       }`}
     >
       {order.status === "NEW" && (
@@ -191,6 +200,10 @@ export function StaffDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [notice, setNotice] = useState("");
 
   const refresh = async () => {
     setError("");
@@ -208,6 +221,15 @@ export function StaffDashboard() {
     const unsubscribe = subscribeToOrders((incoming) => {
       setOrders(incoming);
       setLoading(false);
+    }, {
+      onConnected: () => {
+        setRealtimeConnected(true);
+        setError((current) => (current === REALTIME_ERROR ? "" : current));
+      },
+      onError: () => {
+        setRealtimeConnected(false);
+        setError(REALTIME_ERROR);
+      },
     });
     return () => {
       window.clearTimeout(timer);
@@ -219,7 +241,16 @@ export function StaffDashboard() {
     () =>
       orders
         .filter((order) => filter === "ALL" || order.status === filter)
-        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
+        .sort((a, b) => {
+          if (filter === "ALL") {
+            const aFinished =
+              a.status === "COMPLETED" || a.status === "REJECTED";
+            const bFinished =
+              b.status === "COMPLETED" || b.status === "REJECTED";
+            if (aFinished !== bFinished) return aFinished ? 1 : -1;
+          }
+          return Date.parse(b.createdAt) - Date.parse(a.createdAt);
+        }),
     [orders, filter],
   );
 
@@ -244,8 +275,34 @@ export function StaffDashboard() {
     }
   };
 
+  // DEMO ONLY: remove or protect this control before a production rollout.
+  const clearDemo = async () => {
+    setResetting(true);
+    setError("");
+    setNotice("");
+    try {
+      await resetDemo();
+      setOrders(await loadOrders());
+      setFilter("ALL");
+      setResetOpen(false);
+      setNotice("تم مسح الطلبات المنتهية والمرفوضة بنجاح");
+    } catch {
+      setError("تعذّر تنظيف طلبات الديمو. جرّب مرة تانية.");
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const configured = isSupabaseConfigured();
+  const connectionLabel = !configured
+    ? "وضع العرض المحلي"
+    : realtimeConnected
+      ? "متصل مباشر"
+      : "جاري إعادة الاتصال";
+
   return (
-    <main className="staff-shell min-h-dvh text-stone-50">
+    <>
+      <main className="staff-shell min-h-dvh text-stone-50">
       <header className="border-b border-white/[0.06] bg-[#100d0b]/85 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1500px] items-center justify-between px-5 py-5 sm:px-8 lg:px-10">
           <div className="flex items-center gap-5">
@@ -257,8 +314,16 @@ export function StaffDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2 rounded-full border border-white/[0.07] bg-white/[0.04] px-3 py-2 text-xs text-stone-400">
-            <span className="size-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.6)]" />
-            {isSupabaseConfigured() ? "متصل مباشر" : "وضع العرض المحلي"}
+            <span
+              className={`size-2 rounded-full ${
+                !configured
+                  ? "bg-stone-500"
+                  : realtimeConnected
+                    ? "bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.6)]"
+                    : "animate-pulse bg-amber-300"
+              }`}
+            />
+            {connectionLabel}
           </div>
         </div>
       </header>
@@ -274,12 +339,20 @@ export function StaffDashboard() {
             </h1>
             <p className="mt-2 text-sm text-stone-500">أحدث الطلبات تظهر هنا لحظة بلحظة.</p>
           </div>
-          <button
-            onClick={refresh}
-            className="flex h-10 w-fit items-center gap-2 rounded-full bg-white/[0.05] px-4 text-xs text-stone-300 ring-1 ring-white/[0.06] transition hover:bg-white/[0.08]"
-          >
-            <RefreshCw size={14} /> تحديث
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setResetOpen(true)}
+              className="flex h-10 w-fit items-center gap-2 rounded-full px-3 text-[11px] text-stone-500 ring-1 ring-white/[0.055] transition hover:bg-red-300/[0.06] hover:text-red-200"
+            >
+              <Trash2 size={13} /> Reset Demo
+            </button>
+            <button
+              onClick={refresh}
+              className="flex h-10 w-fit items-center gap-2 rounded-full bg-white/[0.05] px-4 text-xs text-stone-300 ring-1 ring-white/[0.06] transition hover:bg-white/[0.08]"
+            >
+              <RefreshCw size={14} /> تحديث
+            </button>
+          </div>
         </div>
 
         <section className="mt-7 grid grid-cols-3 gap-3 sm:max-w-2xl sm:gap-4">
@@ -336,6 +409,12 @@ export function StaffDashboard() {
           </div>
         )}
 
+        {notice && (
+          <div className="mt-5 rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.07] p-4 text-sm text-emerald-100">
+            {notice}
+          </div>
+        )}
+
         {loading ? (
           <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {[0, 1, 2].map((item) => (
@@ -359,12 +438,63 @@ export function StaffDashboard() {
               <span className="mx-auto grid size-16 place-items-center rounded-full bg-white/[0.04] text-stone-500">
                 <Coffee size={26} strokeWidth={1.5} />
               </span>
-              <h2 className="mt-5 text-lg font-semibold text-stone-200">مفيش طلبات هنا دلوقتي</h2>
-              <p className="mt-2 text-sm text-stone-500">أول طلب جديد هيظهر تلقائيًا.</p>
+              <h2 className="mt-5 text-lg font-semibold text-stone-200">لا توجد طلبات حالياً</h2>
+              <p className="mt-2 text-sm text-stone-500">الطلبات الجديدة هتظهر هنا فوراً.</p>
             </div>
           </div>
         )}
       </div>
-    </main>
+      </main>
+
+      <AnimatePresence>
+        {resetOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-5 backdrop-blur-sm"
+            onClick={() => !resetting && setResetOpen(false)}
+          >
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="reset-demo-title"
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              onClick={(event) => event.stopPropagation()}
+              className="w-full max-w-sm rounded-[1.6rem] border border-white/[0.08] bg-[#181411] p-6 text-right shadow-2xl"
+            >
+              <span className="grid size-11 place-items-center rounded-full bg-red-300/10 text-red-200">
+                <Trash2 size={18} />
+              </span>
+              <h2 id="reset-demo-title" className="mt-5 text-xl font-semibold text-white">
+                هل تريد مسح الطلبات المنتهية؟
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-stone-500">
+                سيتم مسح الطلبات المكتملة والمرفوضة فقط. الطلبات الجديدة وقيد
+                التحضير والجاهزة ستبقى كما هي، ولن تتأثر منتجات المنيو.
+              </p>
+              <div className="mt-6 flex gap-2">
+                <button
+                  disabled={resetting}
+                  onClick={() => setResetOpen(false)}
+                  className="h-11 flex-1 rounded-full bg-white/[0.05] text-sm font-semibold text-stone-300 ring-1 ring-white/[0.07] disabled:opacity-50"
+                >
+                  إلغاء
+                </button>
+                <button
+                  disabled={resetting}
+                  onClick={() => void clearDemo()}
+                  className="h-11 flex-1 rounded-full bg-red-300 text-sm font-bold text-[#2a1111] transition hover:bg-red-200 disabled:opacity-50"
+                >
+                  {resetting ? "جاري المسح..." : "مسح المنتهية"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
