@@ -83,6 +83,21 @@ test("expired saved session cannot invoke session creation without a QR token", 
   assert.equal(access.calls.some((call) => call.type === "start"), false);
 });
 
+test("scanning the physical QR after expiry starts a replacement session", async () => {
+  const access = actions({ id: "replacement-session", active: true });
+  const session = await resolveSessionAccess({
+    tableNumber: "2",
+    savedSessionId: "expired-session",
+    tableQrToken: "fresh-physical-qr-token",
+    actions: access.handlers,
+  });
+
+  assert.equal(session.id, "replacement-session");
+  assert.equal(access.calls.length, 1);
+  assert.equal(access.calls[0].type, "start");
+  assert.equal(access.calls[0].input.existingSessionId, "expired-session");
+});
+
 test("legacy qr=1 is cleaned but never treated as a table token", async () => {
   const access = actions({ id: "must-not-exist" });
   const entry = parseMenuEntryUrl(

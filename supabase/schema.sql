@@ -69,14 +69,19 @@ create index if not exists order_items_order_id_idx
 create index if not exists sessions_expires_at_idx
   on public.sessions(expires_at);
 
--- Enforce an exact one-hour lifetime for every new ordering session. NOT VALID
--- keeps this migration rerunnable even if an older demo row used a different
--- duration, while still enforcing the rule for every new row.
+-- Normalize existing sessions and enforce an exact 15-minute lifetime. This
+-- shortens any still-active legacy one-hour session without deleting it or its
+-- orders.
 alter table public.sessions
   drop constraint if exists sessions_exact_one_hour;
 alter table public.sessions
-  add constraint sessions_exact_one_hour
-  check (expires_at = created_at + interval '1 hour') not valid;
+  drop constraint if exists sessions_exact_fifteen_minutes;
+update public.sessions
+  set expires_at = created_at + interval '15 minutes'
+  where expires_at <> created_at + interval '15 minutes';
+alter table public.sessions
+  add constraint sessions_exact_fifteen_minutes
+  check (expires_at = created_at + interval '15 minutes');
 
 -- A clean menu URL may restore only the session ID already held by that
 -- browser. It never creates or renews a session.
@@ -114,7 +119,7 @@ end;
 $$;
 
 -- The physical QR bearer token is hashed before comparison. Only this
--- security-definer function may create a one-hour customer session.
+-- security-definer function may create a 15-minute customer session.
 create or replace function public.start_table_session(
   p_table_number text,
   p_table_qr_token text,
@@ -187,7 +192,7 @@ begin
     gen_random_uuid(),
     p_table_number,
     now(),
-    now() + interval '1 hour',
+    now() + interval '15 minutes',
     true
   )
   returning * into new_session;

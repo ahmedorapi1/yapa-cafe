@@ -7,7 +7,7 @@ A premium, mobile-first QR café ordering MVP built with the Next.js App Router 
 - Arabic-first, RTL customer menus for Tables 1, 2, and 3
 - Six supplied Yapa product photos, copied from `data/` into `public/products/`
 - Animated category browsing, product details, ingredient reveal, cart, and order status
-- Server-validated table QR tokens and one-hour ordering sessions
+- Server-validated table QR tokens and 15-minute ordering sessions
 - Duplicate-submission guard and atomic order creation
 - Responsive realtime staff dashboard at `/staff`
 - Supabase PostgreSQL schema and Realtime subscriptions
@@ -74,12 +74,12 @@ images and the ignored local environment file; `/qr` displays a masked preview.
 After generating or rotating the QR tokens, run `supabase/schema.sql` and then
 `supabase/table-qr-token-seed.sql` in the Supabase SQL Editor before deploying
 the matching QR images. A clean `/menu/1`, `/menu/2`, or `/menu/3` URL can
-restore an existing valid one-hour session, but it cannot create a new one.
+restore an existing valid 15-minute session, but it cannot create a new one.
 
 ## Database model
 
 - `cafe_tables`: table number, active flag, and SHA-256 QR token hash
-- `sessions`: table session ID, creation time, and one-hour expiry
+- `sessions`: table session ID, creation time, and 15-minute expiry
 - `orders`: table number, total, status, session, and timestamp
 - `order_items`: immutable product name, unit price, and quantity snapshots
 
