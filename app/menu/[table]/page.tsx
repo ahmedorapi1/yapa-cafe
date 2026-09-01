@@ -4,8 +4,8 @@ import { MenuExperience } from "@/components/menu/MenuExperience";
 import { BrandMark } from "@/components/shared/BrandMark";
 
 export const metadata: Metadata = {
-  title: "المنيو",
-  description: "اختار مشروبك من منيو Yapa واطلبه مباشرة على ترابيزتك.",
+  title: { absolute: "Frosty — المنيو" },
+  description: "اختار مشروبك من منيو Frosty واطلبه مباشرة على ترابيزتك.",
 };
 
 export default async function MenuPage({

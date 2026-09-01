@@ -39,7 +39,6 @@ import type {
   Product,
 } from "@/types";
 import { BottomSheet } from "@/components/shared/BottomSheet";
-import { BrandMark } from "@/components/shared/BrandMark";
 
 const categoryPresentation: Record<
   Category,
@@ -376,7 +375,14 @@ export function MenuExperience({ tableNumber }: { tableNumber: string }) {
     <main className="menu-shell min-h-dvh overflow-x-hidden pb-32 text-stone-50">
       <div className="pointer-events-none fixed inset-x-0 top-0 h-96 bg-[radial-gradient(circle_at_78%_8%,rgba(222,154,64,.12),transparent_58%)]" />
       <header className="relative mx-auto flex w-full max-w-6xl items-center justify-between px-5 pb-7 pt-5 sm:px-8 sm:pt-7">
-        <BrandMark />
+        <Image
+          src="/frosty-logo.jpg"
+          alt="Frosty"
+          width={112}
+          height={44}
+          priority
+          className="h-11 w-28 object-cover object-center"
+        />
         <div className="flex items-center gap-2 rounded-full border border-white/[0.07] bg-white/[0.045] px-3 py-2 text-xs text-stone-300 backdrop-blur-md">
           <span className="size-1.5 rounded-full bg-amber-300 shadow-[0_0_12px_rgba(252,211,77,.75)]" />
           <span dir="ltr">Table {tableNumber}</span>
@@ -391,7 +397,7 @@ export function MenuExperience({ tableNumber }: { tableNumber: string }) {
           className="max-w-xl"
         >
           <p className="mb-3 flex items-center gap-2 text-sm font-medium text-amber-200/80">
-            <Sparkles size={15} /> أهلاً بيك في Yapa
+            <Sparkles size={15} /> أهلاً بيك في Frosty
           </p>
           <h1 className="text-balance text-[2rem] font-semibold leading-[1.28] tracking-tight text-stone-50 sm:text-5xl">
             تحب تطلب إيه النهارده؟
@@ -779,7 +785,7 @@ export function MenuExperience({ tableNumber }: { tableNumber: string }) {
             )}
           </button>
           <p className="mt-3 text-center text-[11px] text-stone-500">
-            مفيش دفع أونلاين — الحساب مع فريق Yapa
+            مفيش دفع أونلاين — الحساب مع فريق Frosty
           </p>
         </div>
       </BottomSheet>

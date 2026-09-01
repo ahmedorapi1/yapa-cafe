@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
+import Image from "next/image";
 import {
   BellRing,
   Check,
@@ -24,7 +25,6 @@ import {
   updateOrderStatus,
 } from "@/lib/orders/service";
 import type { CafeOrder, OrderStatus } from "@/types";
-import { BrandMark } from "@/components/shared/BrandMark";
 
 const REALTIME_ERROR = "انقطع التحديث المباشر مؤقتًا. بنحاول نتصل تاني.";
 
@@ -322,10 +322,17 @@ export function StaffDashboard() {
       <header className="border-b border-white/[0.06] bg-[#100d0b]/85 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1500px] items-center justify-between px-5 py-5 sm:px-8 lg:px-10">
           <div className="flex items-center gap-5">
-            <BrandMark compact />
+            <Image
+              src="/frosty-logo.jpg"
+              alt="Frosty"
+              width={96}
+              height={36}
+              priority
+              className="h-9 w-24 object-cover object-center"
+            />
             <div className="hidden h-7 w-px bg-white/10 sm:block" />
             <div>
-              <p className="text-sm font-semibold text-stone-100">Yapa Staff</p>
+              <p className="text-sm font-semibold text-stone-100">Frosty Staff</p>
               <p className="mt-0.5 text-[10px] text-stone-500">لوحة الطلبات المباشرة</p>
             </div>
           </div>

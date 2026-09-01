@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
+
+const menuExperienceSource = await readFile(
+  new URL("../components/menu/MenuExperience.tsx", import.meta.url),
+  "utf8",
+);
 
 async function render(pathname) {
   const workerUrl = new URL(
@@ -25,14 +31,22 @@ for (const table of ["1", "2", "3"]) {
     assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
     const html = await response.text();
-    assert.match(html, /YAPA/);
+    assert.match(html, /frosty-logo\.jpg/);
+    assert.match(html, /Frosty — المنيو/);
     assert.match(html, new RegExp(`Table\\s*(?:<!-- -->)?\\s*${table}`));
     assert.match(html, /Classic Tea/);
     assert.match(html, /Turkish Coffee/);
-    assert.match(html, /Yapa Café/);
+    assert.match(html, /alt="Frosty"/);
+    assert.match(html, /أهلاً بيك في Frosty/);
     assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
   });
 }
+
+test("customer-only copy uses Frosty branding", () => {
+  assert.match(menuExperienceSource, /الحساب مع فريق Frosty/);
+  assert.doesNotMatch(menuExperienceSource, /أهلاً بيك في Yapa/);
+  assert.doesNotMatch(menuExperienceSource, /الحساب مع فريق Yapa/);
+});
 
 test("rejects an invalid table route", async () => {
   const response = await render("/menu/99");
@@ -48,11 +62,13 @@ test("server-renders the staff dashboard", async () => {
   assert.equal(response.status, 200);
 
   const html = await response.text();
-  assert.match(html, /Yapa Staff/);
+  assert.match(html, /Frosty Staff/);
+  assert.match(html, /Frosty — Staff Dashboard/);
+  assert.match(html, /frosty-logo\.jpg/);
+  assert.match(html, /alt="Frosty"/);
   assert.match(html, /Live service/);
   assert.match(html, /غير مدفوع/);
   assert.match(html, /مدفوع/);
-  assert.match(html, /Yapa Café/);
   assert.doesNotMatch(html, /Starter Project|codex-preview/i);
 });
 
